@@ -210,7 +210,7 @@ def main():
             label = "Bullish" if score > 0 else ("Bearish" if score < 0 else "Neutral")
             st.markdown(f"{icon} **{name}** — {label}")
 
-        with st.expander("Macro", expanded=True):
+        with st.expander("Macro + BTC Cycle", expanded=True):
             for k, v in all_bd["macro"].items():
                 signal_row(k.replace("_", " ").title(), v)
 
@@ -515,7 +515,86 @@ def main():
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
     # ════════════════════════════════════════════════════════════════════
-    # SECTION 7: ICT TRADE IDEAS
+    # SECTION 7: BTC ON-CHAIN & HALVING CYCLE
+    # ════════════════════════════════════════════════════════════════════
+    st.markdown("### ₿ On-Chain & Halving Cycle")
+    st.caption(
+        "BTC halving (every ~4 years) cuts new supply in half — historically the single biggest "
+        "structural catalyst for BTC bull markets. On-chain data from blockchain.com (no API key needed)."
+    )
+
+    btc_spec  = ind.get("btc_specific", {})
+    halving   = btc_spec.get("halving", {})
+    onchain   = btc_spec.get("onchain", {})
+    dominance = btc_spec.get("dominance")
+
+    # ── Halving cycle progress bar ────────────────────────────────────
+    fig_halving = charts.chart_halving_cycle(halving)
+    st.plotly_chart(fig_halving, use_container_width=True, config={"displayModeBar": False})
+
+    # ── Metric cards row ─────────────────────────────────────────────
+    hc1, hc2, hc3, hc4 = st.columns(4)
+    with hc1:
+        phase = halving.get("phase", "N/A")
+        months_sin = halving.get("months_since")
+        phase_colors = {
+            "Early Bull":  "bull-text",
+            "Peak Risk":   "neut-text",
+            "Bear Market": "bear-text",
+            "Pre-Halving": "neut-text",
+        }
+        phase_cls = phase_colors.get(phase, "neut-text")
+        metric_card(
+            "Halving Cycle Phase",
+            phase,
+            f"{months_sin:.0f} months post-halving" if months_sin is not None else "",
+            change_positive=(phase in ("Early Bull", "Pre-Halving")),
+        )
+    with hc2:
+        days_to = halving.get("days_to_next")
+        next_h  = halving.get("next_halving", "")
+        metric_card(
+            "Next Halving",
+            f"{days_to:,} days" if days_to is not None else "N/A",
+            next_h,
+            change_positive=None,
+        )
+    with hc3:
+        hr_data   = onchain.get("hash_rate", {})
+        hr_val    = hr_data.get("value")
+        hr_trend  = hr_data.get("trend_pct")
+        hr_rising = hr_data.get("rising")
+        hr_trend_str = (
+            f"{'▲' if hr_trend and hr_trend > 0 else '▼'} {abs(hr_trend):.1f}% (4W)"
+            if hr_trend is not None else ""
+        )
+        metric_card(
+            "Network Hash Rate",
+            _fmt(hr_val, 1, " EH/s") if hr_val else "N/A",
+            hr_trend_str,
+            change_positive=hr_rising,
+        )
+    with hc4:
+        metric_card(
+            "BTC Market Dominance",
+            _fmt(dominance, 1, "%") if dominance else "N/A",
+            "Rising = BTC leading altcoins",
+            change_positive=dominance and dominance > 50 if dominance else None,
+        )
+
+    # ── On-chain charts ───────────────────────────────────────────────
+    oc1, oc2 = st.columns(2)
+    with oc1:
+        fig_hr = charts.chart_hashrate(onchain)
+        st.plotly_chart(fig_hr, use_container_width=True, config={"displayModeBar": False})
+    with oc2:
+        fig_mr = charts.chart_miner_revenue(onchain)
+        st.plotly_chart(fig_mr, use_container_width=True, config={"displayModeBar": False})
+
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+
+    # ════════════════════════════════════════════════════════════════════
+    # SECTION 8: ICT TRADE IDEAS
     # ════════════════════════════════════════════════════════════════════
     st.markdown("### ICT Trade Ideas (Daily)")
     st.caption(

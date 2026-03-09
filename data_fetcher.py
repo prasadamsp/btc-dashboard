@@ -313,6 +313,63 @@ def fetch_daily_prices(days: int = config.ICT_DAILY_DAYS) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# On-Chain Metrics — blockchain.com Charts API (no API key required)
+# ---------------------------------------------------------------------------
+
+def fetch_onchain_metrics() -> dict[str, pd.Series]:
+    """
+    Fetch BTC on-chain metrics from blockchain.com charts API.
+    Returns dict of {metric_name: pd.Series (index=date, values=metric)}.
+    No API key required.
+    """
+    chart_map = {
+        "hash_rate":      "hash-rate",
+        "miner_revenue":  "miners-revenue",
+    }
+    result: dict[str, pd.Series] = {}
+
+    for key, chart_name in chart_map.items():
+        url = (
+            f"{config.BLOCKCHAIN_API_BASE}/{chart_name}"
+            f"?timespan={config.BLOCKCHAIN_TIMESPAN}&format=json&sampled=true"
+        )
+        try:
+            resp = requests.get(url, timeout=15)
+            resp.raise_for_status()
+            values = resp.json().get("values", [])
+            if not values:
+                result[key] = pd.Series(dtype=float, name=key)
+                continue
+            df = pd.DataFrame(values)
+            df["date"] = pd.to_datetime(df["x"], unit="s").dt.normalize()
+            s = df.set_index("date")["y"].rename(key)
+            s.index = pd.to_datetime(s.index).tz_localize(None)
+            result[key] = s.dropna()
+        except Exception:
+            result[key] = pd.Series(dtype=float, name=key)
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# BTC Market Dominance — CoinGecko free API (no key required)
+# ---------------------------------------------------------------------------
+
+def fetch_btc_dominance() -> float | None:
+    """
+    Fetch current BTC market dominance % from CoinGecko global endpoint.
+    Returns float (e.g. 54.3) or None on failure.
+    """
+    try:
+        resp = requests.get(config.COINGECKO_GLOBAL_URL, timeout=10)
+        resp.raise_for_status()
+        dominance = resp.json().get("data", {}).get("market_cap_percentage", {}).get("btc")
+        return round(float(dominance), 2) if dominance else None
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Aggregate fetch — single call that returns everything
 # ---------------------------------------------------------------------------
 
@@ -331,23 +388,27 @@ def fetch_all_data(fred_key: str = "") -> dict:
         "fetched_at":   datetime
     }
     """
-    prices      = fetch_weekly_prices()
-    etf_shares  = fetch_etf_shares_outstanding()
-    fred        = fetch_fred_series(api_key=fred_key)
-    cot         = fetch_cot_btc()
-    fear_greed  = fetch_fear_greed()
-    weekly_btc  = fetch_weekly_btc_ohlcv()
-    monthly_btc = fetch_monthly_prices()
-    daily_btc   = fetch_daily_prices()
+    prices        = fetch_weekly_prices()
+    etf_shares    = fetch_etf_shares_outstanding()
+    fred          = fetch_fred_series(api_key=fred_key)
+    cot           = fetch_cot_btc()
+    fear_greed    = fetch_fear_greed()
+    weekly_btc    = fetch_weekly_btc_ohlcv()
+    monthly_btc   = fetch_monthly_prices()
+    daily_btc     = fetch_daily_prices()
+    onchain       = fetch_onchain_metrics()
+    btc_dominance = fetch_btc_dominance()
 
     return {
-        "prices":      prices,
-        "etf_shares":  etf_shares,
-        "fred":        fred,
-        "cot":         cot,
-        "fear_greed":  fear_greed,
-        "weekly_btc":  weekly_btc,
-        "monthly_btc": monthly_btc,
-        "daily_btc":   daily_btc,
-        "fetched_at":  datetime.now(),
+        "prices":        prices,
+        "etf_shares":    etf_shares,
+        "fred":          fred,
+        "cot":           cot,
+        "fear_greed":    fear_greed,
+        "weekly_btc":    weekly_btc,
+        "monthly_btc":   monthly_btc,
+        "daily_btc":     daily_btc,
+        "onchain":       onchain,
+        "btc_dominance": btc_dominance,
+        "fetched_at":    datetime.now(),
     }

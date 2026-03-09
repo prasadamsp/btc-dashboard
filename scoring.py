@@ -271,6 +271,34 @@ def score_qqq(cross: dict) -> int:
     return 0
 
 
+# ── BTC-Specific ────────────────────────────────────────────────────────────
+
+def score_halving_cycle(btc_specific: dict) -> int:
+    """
+    BTC halving cycle phase score:
+    Early Bull (0-18m post-halving) → +1 (supply shock building)
+    Peak Risk  (18-30m)             → -1 (historically overheated)
+    Bear Market (30-42m)            → -1
+    Pre-Halving (42m+)              → +1 (anticipation / accumulation)
+    """
+    phase = btc_specific.get("halving", {}).get("phase")
+    if phase is None:
+        return 0
+    if phase in ("Early Bull", "Pre-Halving"):
+        return 1
+    if phase in ("Peak Risk", "Bear Market"):
+        return -1
+    return 0
+
+
+def score_hashrate(btc_specific: dict) -> int:
+    """Rising 4-week hash rate = miner confidence = bullish BTC fundamentals."""
+    rising = btc_specific.get("onchain", {}).get("hash_rate", {}).get("rising")
+    if rising is None:
+        return 0
+    return 1 if rising else -1
+
+
 # ---------------------------------------------------------------------------
 # Master scoring
 # ---------------------------------------------------------------------------
@@ -286,10 +314,11 @@ def score_all(indicators: dict) -> dict:
         "group_scores": {group: float},
     }
     """
-    macro = indicators.get("macro", {})
-    tech  = indicators.get("technical", {})
-    sent  = indicators.get("sentiment", {})
-    cross = indicators.get("cross_asset", {})
+    macro    = indicators.get("macro", {})
+    tech     = indicators.get("technical", {})
+    sent     = indicators.get("sentiment", {})
+    cross    = indicators.get("cross_asset", {})
+    btc_spec = indicators.get("btc_specific", {})
 
     # ── Macro scores ──
     macro_scores = {
@@ -300,6 +329,8 @@ def score_all(indicators: dict) -> dict:
         "cpi":         score_cpi(macro),
         "pce":         score_pce(macro),
         "yield_curve": score_yield_curve(macro),
+        "halving":     score_halving_cycle(btc_spec),   # BTC 4-year cycle
+        "hashrate":    score_hashrate(btc_spec),         # Network security trend
     }
     macro_group = sum(
         macro_scores[k] * config.MACRO_SUB_WEIGHTS.get(k, 0)

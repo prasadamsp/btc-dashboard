@@ -391,6 +391,101 @@ def calc_cross_asset_snapshot(prices: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# BTC Halving Cycle
+# ---------------------------------------------------------------------------
+
+def calc_halving_cycle() -> dict:
+    """
+    Compute BTC halving cycle position from known halving dates.
+    Returns phase, days_since, days_to_next, months_since, cycle_pct.
+    No external API needed — all calculated from config.BTC_HALVING_DATES.
+    """
+    from datetime import date as _date
+    today = _date.today()
+
+    halving_dates = [pd.Timestamp(d).date() for d in config.BTC_HALVING_DATES]
+    past     = [h for h in halving_dates if h <= today]
+    future   = [h for h in halving_dates if h > today]
+
+    if not past:
+        return {}
+
+    last_halving = max(past)
+    days_since   = (today - last_halving).days
+    months_since = round(days_since / 30.44, 1)
+
+    if future:
+        next_halving = min(future)
+    else:
+        next_halving = (pd.Timestamp(last_halving) + pd.Timedelta(days=config.BTC_CYCLE_LENGTH_DAYS)).date()
+
+    days_to_next = (next_halving - today).days
+    cycle_total  = days_since + days_to_next
+    cycle_pct    = round(days_since / cycle_total * 100, 1) if cycle_total > 0 else 0.0
+
+    if months_since <= config.BTC_HALVING_EARLY_BULL_MONTHS:
+        phase = "Early Bull"        # supply shock builds → bullish
+    elif months_since <= config.BTC_HALVING_PEAK_MONTHS:
+        phase = "Peak Risk"         # historically overheated → bearish
+    elif months_since <= config.BTC_HALVING_BEAR_MONTHS:
+        phase = "Bear Market"       # bear market phase → bearish
+    else:
+        phase = "Pre-Halving"       # accumulation / anticipation → bullish
+
+    return {
+        "last_halving": str(last_halving),
+        "next_halving": str(next_halving),
+        "days_since":   days_since,
+        "days_to_next": days_to_next,
+        "months_since": months_since,
+        "cycle_pct":    cycle_pct,
+        "phase":        phase,
+    }
+
+
+# ---------------------------------------------------------------------------
+# On-Chain Metrics Snapshot
+# ---------------------------------------------------------------------------
+
+def calc_onchain_snapshot(onchain: dict) -> dict:
+    """
+    Compute on-chain indicator snapshot from blockchain.com data.
+    Returns hash_rate and miner_revenue dicts with value + trend info.
+    """
+    result: dict = {}
+
+    # Hash rate
+    hr = onchain.get("hash_rate", pd.Series())
+    if isinstance(hr, pd.Series) and len(hr) >= 4:
+        current   = float(hr.iloc[-1])
+        prev_4w   = float(hr.iloc[-4])
+        trend_pct = round((current / prev_4w - 1) * 100, 2) if prev_4w > 0 else None
+        result["hash_rate"] = {
+            "value":     round(current, 2),
+            "trend_pct": trend_pct,
+            "rising":    trend_pct > 0 if trend_pct is not None else None,
+            "series":    hr,
+        }
+    else:
+        result["hash_rate"] = {"value": None, "trend_pct": None, "rising": None, "series": None}
+
+    # Miner revenue
+    mr = onchain.get("miner_revenue", pd.Series())
+    if isinstance(mr, pd.Series) and len(mr) >= 4:
+        mr_cur    = float(mr.iloc[-1])
+        mr_prev4w = float(mr.iloc[-4])
+        result["miner_revenue"] = {
+            "value":   round(mr_cur / 1e6, 2),   # in millions USD
+            "rising":  mr_cur > mr_prev4w,
+            "series":  mr,
+        }
+    else:
+        result["miner_revenue"] = {"value": None, "rising": None, "series": None}
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Master indicator builder
 # ---------------------------------------------------------------------------
 
@@ -419,6 +514,9 @@ def build_all_indicators(data: dict) -> dict:
 
     etf_data = calc_btc_etf_flow(prices, etf_shares)
 
+    onchain    = data.get("onchain", {})
+    dominance  = data.get("btc_dominance")
+
     return {
         "btc_price":       _safe_last(btc_close),
         "btc_weekly_chg":  pct_change_weekly(btc_close),
@@ -440,5 +538,10 @@ def build_all_indicators(data: dict) -> dict:
             },
         },
         "cross_asset": calc_cross_asset_snapshot(prices),
+        "btc_specific": {
+            "halving":    calc_halving_cycle(),
+            "onchain":    calc_onchain_snapshot(onchain),
+            "dominance":  dominance,
+        },
         "prices":      prices,
     }

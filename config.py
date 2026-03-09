@@ -90,18 +90,6 @@ SCORING_WEIGHTS = {
     "cross_asset": 0.10,
 }
 
-# Macro sub-weights (within macro group, must sum to 1.0)
-# BTC responds strongly to DXY and Fed policy; M2 expansion is a key driver
-MACRO_SUB_WEIGHTS = {
-    "dxy":          0.30,   # USD direction (strongest macro driver for BTC)
-    "real_yield":   0.20,   # Real interest rate
-    "fed_funds":    0.20,   # Rate cycle
-    "breakeven":    0.10,   # Inflation expectations
-    "cpi":          0.10,   # CPI trend
-    "pce":          0.05,   # PCE trend
-    "yield_curve":  0.05,   # 10Y-2Y spread direction
-}
-
 # Sentiment sub-weights
 # BTC sentiment is heavily driven by Fear & Greed and ETF inflows
 SENTIMENT_SUB_WEIGHTS = {
@@ -181,3 +169,48 @@ ICT_OTE_ATR_MULTIPLIER        = 1.5     # Trade 2 stop buffer = ATR × this
 ICT_LIQ_ATR_MULTIPLIER        = 1.0     # Trade 3 stop buffer = ATR × this
 ICT_OTE_STOP_FALLBACK_PCT     = 0.010   # Trade 2 fallback stop buffer (wider for BTC)
 ICT_LIQ_STOP_FALLBACK_PCT     = 0.008   # Trade 3 fallback stop buffer (wider for BTC)
+
+# ---------------------------------------------------------------------------
+# BTC Halving Cycle — known dates + cycle parameters
+# ---------------------------------------------------------------------------
+BTC_HALVING_DATES = [
+    "2012-11-28",   # Halving 1: reward 25 BTC/block
+    "2016-07-09",   # Halving 2: reward 12.5 BTC/block
+    "2020-05-11",   # Halving 3: reward 6.25 BTC/block
+    "2024-04-19",   # Halving 4: reward 3.125 BTC/block
+    "2028-04-17",   # Halving 5: reward 1.5625 BTC/block (estimated)
+]
+BTC_CYCLE_LENGTH_DAYS = 1458            # historical avg days between halvings
+
+# Phase thresholds (months after last halving)
+BTC_HALVING_EARLY_BULL_MONTHS = 18      # 0-18m  → Early Bull (supply shock builds) → bullish
+BTC_HALVING_PEAK_MONTHS       = 30      # 18-30m → Peak Risk Zone → bearish
+BTC_HALVING_BEAR_MONTHS       = 42      # 30-42m → Bear Market → bearish
+# 42m+                                  # Pre-Halving accumulation → bullish
+
+# ---------------------------------------------------------------------------
+# On-Chain Data — blockchain.com charts API (no API key required)
+# ---------------------------------------------------------------------------
+BLOCKCHAIN_API_BASE = "https://api.blockchain.info/charts"
+BLOCKCHAIN_TIMESPAN = "2years"          # timespan param for blockchain.com API
+
+# ---------------------------------------------------------------------------
+# CoinGecko free API (no key needed for global market data)
+# ---------------------------------------------------------------------------
+COINGECKO_GLOBAL_URL = "https://api.coingecko.com/api/v3/global"
+
+# ---------------------------------------------------------------------------
+# Updated MACRO_SUB_WEIGHTS — includes BTC-specific halving + hashrate signals
+# (reduced dxy and real_yield slightly to accommodate new BTC fundamentals)
+# ---------------------------------------------------------------------------
+MACRO_SUB_WEIGHTS = {
+    "dxy":          0.25,   # USD direction (key macro driver)
+    "real_yield":   0.15,   # Real interest rate
+    "fed_funds":    0.15,   # Rate cycle
+    "breakeven":    0.10,   # Inflation expectations
+    "cpi":          0.10,   # CPI trend
+    "pce":          0.05,   # PCE trend
+    "yield_curve":  0.05,   # 10Y-2Y spread direction
+    "halving":      0.10,   # BTC halving cycle phase (unique to BTC)
+    "hashrate":     0.05,   # Network hash rate trend (miner confidence)
+}

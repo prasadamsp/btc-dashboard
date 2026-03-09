@@ -426,6 +426,140 @@ def chart_score_breakdown(group_scores: dict, breakdown: dict) -> go.Figure:
 
 
 # ---------------------------------------------------------------------------
+# BTC Halving Cycle Chart
+# ---------------------------------------------------------------------------
+
+def chart_halving_cycle(halving: dict) -> go.Figure:
+    """
+    Visual progress bar of the current BTC halving cycle with phase annotations.
+    Shows: last halving → current position → next halving.
+    """
+    fig = go.Figure()
+
+    if not halving or halving.get("cycle_pct") is None:
+        fig.add_annotation(text="Halving data unavailable", xref="paper", yref="paper",
+                           x=0.5, y=0.5, showarrow=False, font=dict(color=TEXT_COLOR, size=14))
+        _apply_layout(fig, title="BTC Halving Cycle Progress", height=160)
+        return fig
+
+    cycle_pct  = halving["cycle_pct"]
+    phase      = halving["phase"]
+    days_to    = halving["days_to_next"]
+    last_h     = halving["last_halving"]
+    next_h     = halving["next_halving"]
+    months_sin = halving["months_since"]
+
+    phase_colors = {
+        "Early Bull":  BULL_COLOR,
+        "Peak Risk":   "#FF6D00",
+        "Bear Market": BEAR_COLOR,
+        "Pre-Halving": "#FFD740",
+    }
+    color = phase_colors.get(phase, BTC_COLOR)
+
+    # Phase zones as background bands (% of cycle)
+    phase_bands = [
+        (0,   37.5, BULL_COLOR,   0.07),   # Early Bull: 0-18m of ~48m cycle
+        (37.5, 62.5, "#FF6D00",  0.07),   # Peak Risk: 18-30m
+        (62.5, 87.5, BEAR_COLOR,  0.07),   # Bear: 30-42m
+        (87.5, 100,  "#FFD740",   0.07),   # Pre-Halving: 42m+
+    ]
+    for x0, x1, fc, op in phase_bands:
+        fig.add_shape(type="rect", x0=x0, x1=x1, y0=0, y1=1, xref="x", yref="paper",
+                      fillcolor=fc, opacity=op, line=dict(width=0), layer="below")
+
+    # Progress bar (filled portion)
+    fig.add_trace(go.Bar(
+        x=[cycle_pct], y=["Cycle"],
+        orientation="h",
+        marker=dict(color=color, opacity=0.85),
+        width=0.5,
+        showlegend=False,
+        text=[f"  {cycle_pct:.1f}% — {phase}  ({months_sin:.0f}m since halving)"],
+        textposition="inside" if cycle_pct > 15 else "outside",
+        insidetextanchor="middle",
+        textfont=dict(color="#000", size=13, family="Inter, Arial, sans-serif"),
+    ))
+
+    # Phase boundary lines
+    for x_pct, label in [(37.5, "18m"), (62.5, "30m"), (87.5, "42m")]:
+        fig.add_shape(type="line", x0=x_pct, x1=x_pct, y0=0, y1=1,
+                      xref="x", yref="paper",
+                      line=dict(color="#555", dash="dot", width=1))
+        fig.add_annotation(x=x_pct, y=1.05, text=label, showarrow=False,
+                           xref="x", yref="paper",
+                           font=dict(size=9, color="#888"), xanchor="center")
+
+    _apply_layout(
+        fig,
+        title=f"₿ Halving Cycle — {last_h} → {next_h} · {days_to:,} days to next halving · Phase: {phase}",
+        height=160,
+        xaxis=dict(range=[0, 100], ticksuffix="%", gridcolor=GRID_COLOR, zeroline=False),
+        yaxis=dict(visible=False),
+        margin=dict(l=10, r=10, t=50, b=30),
+    )
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# On-Chain Hash Rate Chart
+# ---------------------------------------------------------------------------
+
+def chart_hashrate(onchain_snapshot: dict) -> go.Figure:
+    """BTC network hash rate trend from blockchain.com."""
+    hr = onchain_snapshot.get("hash_rate", {})
+    series = hr.get("series")
+
+    if series is None or (isinstance(series, pd.Series) and series.empty):
+        fig = go.Figure()
+        fig.add_annotation(text="Hash rate data unavailable", xref="paper", yref="paper",
+                           x=0.5, y=0.5, showarrow=False, font=dict(color=TEXT_COLOR, size=14))
+        _apply_layout(fig, title="BTC Network Hash Rate (EH/s)", height=220)
+        return fig
+
+    color = BULL_COLOR if hr.get("rising") else BEAR_COLOR
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=series.index, y=series.values,
+        name="Hash Rate (EH/s)", line=dict(color=color, width=2),
+        fill="tozeroy", fillcolor=f"{color}15",
+    ))
+    trend_pct = hr.get("trend_pct")
+    trend_str = f"4W trend: {'▲' if trend_pct and trend_pct > 0 else '▼'} {abs(trend_pct):.1f}%" if trend_pct is not None else ""
+    _apply_layout(fig, title=f"BTC Network Hash Rate (EH/s) — {trend_str}", height=220,
+                  yaxis=dict(gridcolor=GRID_COLOR, ticksuffix=" EH/s"))
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Miner Revenue Chart
+# ---------------------------------------------------------------------------
+
+def chart_miner_revenue(onchain_snapshot: dict) -> go.Figure:
+    """BTC miner daily revenue trend from blockchain.com."""
+    mr = onchain_snapshot.get("miner_revenue", {})
+    series = mr.get("series")
+
+    if series is None or (isinstance(series, pd.Series) and series.empty):
+        fig = go.Figure()
+        fig.add_annotation(text="Miner revenue data unavailable", xref="paper", yref="paper",
+                           x=0.5, y=0.5, showarrow=False, font=dict(color=TEXT_COLOR, size=14))
+        _apply_layout(fig, title="BTC Miner Daily Revenue (USD)", height=220)
+        return fig
+
+    color = BULL_COLOR if mr.get("rising") else BEAR_COLOR
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=series.index, y=series.values / 1e6,  # convert to millions
+        name="Miner Revenue ($M/day)", line=dict(color=color, width=1.8),
+        fill="tozeroy", fillcolor=f"{color}12",
+    ))
+    _apply_layout(fig, title="BTC Miner Daily Revenue ($M/day) — Rising = Healthy Network",
+                  height=220, yaxis=dict(gridcolor=GRID_COLOR, tickprefix="$", ticksuffix="M"))
+    return fig
+
+
+# ---------------------------------------------------------------------------
 # ICT Levels Chart — Daily candlestick with FVG/OB/Fibonacci overlays
 # ---------------------------------------------------------------------------
 
