@@ -560,6 +560,235 @@ def chart_miner_revenue(onchain_snapshot: dict) -> go.Figure:
 
 
 # ---------------------------------------------------------------------------
+# Bollinger Bands — Weekly BTC with BB overlay
+# ---------------------------------------------------------------------------
+
+def chart_bollinger_bands(prices: dict, bb: dict) -> go.Figure:
+    """Weekly BTC price with 20W Bollinger Bands (2σ) and %B sub-panel."""
+    btc = prices.get("btc", pd.DataFrame()).get("Close", pd.Series())
+    if btc.empty or not bb:
+        return go.Figure()
+
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        row_heights=[0.7, 0.3],
+        vertical_spacing=0.04,
+        subplot_titles=["BTC Price + 20W Bollinger Bands (2σ)", "%B Oscillator"],
+    )
+
+    # Price
+    fig.add_trace(go.Scatter(
+        x=btc.index, y=btc.values,
+        name="BTC-USD", line=dict(color=BTC_COLOR, width=2),
+    ), row=1, col=1)
+
+    # Upper / Middle / Lower bands
+    upper_s  = bb.get("upper_series")
+    lower_s  = bb.get("lower_series")
+    middle_s = bb.get("middle_series")
+
+    if upper_s is not None and not upper_s.empty:
+        fig.add_trace(go.Scatter(
+            x=upper_s.index, y=upper_s.values,
+            name="Upper BB", line=dict(color="#CE93D8", width=1.2, dash="dot"),
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=lower_s.index, y=lower_s.values,
+            name="Lower BB", line=dict(color="#CE93D8", width=1.2, dash="dot"),
+            fill="tonexty", fillcolor="rgba(206,147,216,0.06)",
+        ), row=1, col=1)
+    if middle_s is not None and not middle_s.empty:
+        fig.add_trace(go.Scatter(
+            x=middle_s.index, y=middle_s.values,
+            name="20W MA (mid)", line=dict(color="#888888", width=1, dash="dash"),
+        ), row=1, col=1)
+
+    # %B oscillator
+    if not btc.empty and upper_s is not None and lower_s is not None:
+        pct_b_series = ((btc - lower_s) / (upper_s - lower_s) * 100).dropna()
+        bar_colors   = [BULL_COLOR if v <= 15 else (BEAR_COLOR if v >= 85 else NEUTRAL_COLOR)
+                        for v in pct_b_series.values]
+        fig.add_trace(go.Bar(
+            x=pct_b_series.index, y=pct_b_series.values,
+            name="%B", marker_color=bar_colors, opacity=0.75,
+        ), row=2, col=1)
+        for lvl, color, lbl in [(100, BEAR_COLOR, "Above Upper"), (80, "#FF6D00", "Near Upper"),
+                                  (50, NEUTRAL_COLOR, "Mid"),
+                                  (20, "#69F0AE", "Near Lower"), (0, BULL_COLOR, "Below Lower")]:
+            fig.add_hline(y=lvl, line=dict(color=color, dash="dot", width=0.8),
+                          annotation_text=lbl, annotation_font=dict(size=8, color=color),
+                          row=2, col=1)
+
+    _apply_layout(fig, title="Bollinger Bands (20W, 2σ) — Squeeze / Expansion", height=400,
+                  yaxis=dict(gridcolor=GRID_COLOR, tickprefix="$"),
+                  yaxis2=dict(gridcolor=GRID_COLOR, range=[-10, 110], ticksuffix="%"))
+    fig.update_xaxes(gridcolor=GRID_COLOR)
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Funding Rate Chart
+# ---------------------------------------------------------------------------
+
+def chart_funding_rate(funding_signal: dict) -> go.Figure:
+    """BTC perp funding rate history — extreme positive = crowded longs (bearish)."""
+    series = funding_signal.get("series")
+    if series is None or (isinstance(series, pd.DataFrame) and series.empty):
+        fig = go.Figure()
+        fig.add_annotation(text="Funding rate data unavailable (Binance API)",
+                           xref="paper", yref="paper", x=0.5, y=0.5,
+                           showarrow=False, font=dict(color=TEXT_COLOR, size=14))
+        _apply_layout(fig, title="BTC Perp Funding Rate (8h)", height=250)
+        return fig
+
+    rates = series["rate"].dropna() if "rate" in series.columns else pd.Series()
+    bar_colors = []
+    for v in rates.values:
+        if v > 0.05:
+            bar_colors.append(BEAR_COLOR)       # extreme long (bearish)
+        elif v > 0:
+            bar_colors.append("#FF6D00")        # mild long
+        elif v < -0.01:
+            bar_colors.append(BULL_COLOR)       # shorts crowded (bullish)
+        else:
+            bar_colors.append(NEUTRAL_COLOR)
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=rates.index, y=rates.values,
+        name="Funding Rate (%/8h)", marker_color=bar_colors, opacity=0.85,
+    ))
+    fig.add_hline(y=0.05, line=dict(color=BEAR_COLOR, dash="dot", width=1),
+                  annotation_text="Extreme Long (0.05%)", annotation_position="right",
+                  annotation_font=dict(size=9, color=BEAR_COLOR))
+    fig.add_hline(y=-0.01, line=dict(color=BULL_COLOR, dash="dot", width=1),
+                  annotation_text="Extreme Short (-0.01%)", annotation_position="right",
+                  annotation_font=dict(size=9, color=BULL_COLOR))
+    fig.add_hline(y=0, line=dict(color="#555", width=1))
+
+    _apply_layout(fig, title="BTC/USDT Perp Funding Rate (8h) — Source: Binance",
+                  height=260, yaxis=dict(gridcolor=GRID_COLOR, ticksuffix="%"))
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Open Interest Chart
+# ---------------------------------------------------------------------------
+
+def chart_open_interest(oi_signal: dict, prices: dict) -> go.Figure:
+    """BTC perp open interest vs price — detect trend confirmation vs divergence."""
+    oi_df = oi_signal.get("series")
+    if oi_df is None or (isinstance(oi_df, pd.DataFrame) and oi_df.empty):
+        fig = go.Figure()
+        fig.add_annotation(text="Open interest data unavailable (Binance API)",
+                           xref="paper", yref="paper", x=0.5, y=0.5,
+                           showarrow=False, font=dict(color=TEXT_COLOR, size=14))
+        _apply_layout(fig, title="BTC Perp Open Interest", height=250)
+        return fig
+
+    btc_close = prices.get("btc", pd.DataFrame()).get("Close", pd.Series()).dropna()
+
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        row_heights=[0.55, 0.45],
+        vertical_spacing=0.04,
+        subplot_titles=["BTC Price (Weekly)", "Open Interest ($B) — 30 Days"],
+    )
+
+    # Price (weekly)
+    if not btc_close.empty:
+        fig.add_trace(go.Scatter(
+            x=btc_close.index, y=btc_close.values,
+            name="BTC-USD", line=dict(color=BTC_COLOR, width=2),
+        ), row=1, col=1)
+
+    # OI bars
+    if "oi_usd" in oi_df.columns:
+        oi_vals = oi_df["oi_usd"] / 1e9   # to billions
+        oi_color = BULL_COLOR if oi_signal.get("oi_rising") else BEAR_COLOR
+        fig.add_trace(go.Bar(
+            x=oi_vals.index, y=oi_vals.values,
+            name="OI ($B)", marker_color=oi_color, opacity=0.75,
+        ), row=2, col=1)
+
+    regime_label = {
+        "confirmed_bull":      "OI ↑ + Price ↑ = Confirmed Bull",
+        "bearish_distribution": "OI ↑ + Price ↓ = Bearish Distribution",
+        "short_covering":       "OI ↓ + Price ↑ = Short Covering / Weak",
+        "bearish_liquidation":  "OI ↓ + Price ↓ = Bearish Liquidation",
+    }.get(oi_signal.get("regime", ""), "")
+
+    _apply_layout(fig, title=f"Open Interest vs Price — {regime_label}", height=360,
+                  yaxis=dict(gridcolor=GRID_COLOR, tickprefix="$"),
+                  yaxis2=dict(gridcolor=GRID_COLOR, tickprefix="$", ticksuffix="B"))
+    fig.update_xaxes(gridcolor=GRID_COLOR)
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Key Price Levels — Horizontal distance chart
+# ---------------------------------------------------------------------------
+
+def chart_key_levels_distance(key_levels: dict) -> go.Figure:
+    """
+    Horizontal bar chart showing BTC's distance from key price levels
+    (ATH, 52W H/L, psychological levels nearest above/below).
+    """
+    if not key_levels:
+        return go.Figure()
+
+    current = key_levels.get("current_price", 0)
+    levels  = []
+
+    # ATH
+    if key_levels.get("ath"):
+        levels.append(("ATH", key_levels["ath"], key_levels.get("ath_dist_pct", 0)))
+    # 52W High / Low
+    if key_levels.get("w52_high"):
+        levels.append(("52W High", key_levels["w52_high"], key_levels.get("w52_high_dist", 0)))
+    if key_levels.get("w52_low"):
+        levels.append(("52W Low",  key_levels["w52_low"],  key_levels.get("w52_low_dist", 0)))
+
+    # Nearest psychological levels
+    for item in key_levels.get("nearest_above", []):
+        levels.append((f"${item['level']:,}", item["level"], item["dist_pct"]))
+    for item in key_levels.get("nearest_below", []):
+        levels.append((f"${item['level']:,}", item["level"], item["dist_pct"]))
+
+    # Sort by price descending
+    levels.sort(key=lambda x: x[1], reverse=True)
+
+    labels    = [l[0] for l in levels]
+    distances = [l[2] for l in levels]
+    prices    = [l[1] for l in levels]
+    colors    = [BULL_COLOR if d > 0 else BEAR_COLOR for d in distances]
+
+    fig = go.Figure(go.Bar(
+        y=labels,
+        x=distances,
+        orientation="h",
+        marker_color=colors,
+        opacity=0.8,
+        text=[f"${p:,.0f}  ({d:+.1f}%)" for p, d in zip(prices, distances)],
+        textposition="outside",
+        textfont=dict(size=10),
+    ))
+    fig.add_vline(x=0, line=dict(color=BTC_COLOR, width=2),
+                  annotation_text=f"Current ${current:,.0f}",
+                  annotation_position="top",
+                  annotation_font=dict(color=BTC_COLOR, size=11))
+    _apply_layout(fig,
+                  title="Key Price Levels — Distance from Current BTC Price",
+                  height=350,
+                  xaxis=dict(gridcolor=GRID_COLOR, ticksuffix="%", zeroline=False),
+                  yaxis=dict(gridcolor=GRID_COLOR),
+                  margin=dict(l=80, r=140, t=50, b=10))
+    return fig
+
+
+# ---------------------------------------------------------------------------
 # ICT Levels Chart — Daily candlestick with FVG/OB/Fibonacci overlays
 # ---------------------------------------------------------------------------
 

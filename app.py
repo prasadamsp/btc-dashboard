@@ -216,7 +216,7 @@ def main():
 
         with st.expander("Sentiment"):
             for k, v in all_bd["sentiment"].items():
-                signal_row(k.replace("_", " ").title(), v)
+                signal_row(k.replace("_", " ").title(), v if isinstance(v, int) else 0)
 
         with st.expander("Technical"):
             for k, v in all_bd["technical"].items():
@@ -225,6 +225,69 @@ def main():
         with st.expander("Cross-Asset"):
             for k, v in all_bd["cross_asset"].items():
                 signal_row(k.replace("_", " ").title(), v)
+
+    # ── Bias Narrative Summary ───────────────────────────────────────────
+    def _build_narrative(bias: dict, ind: dict) -> str:
+        score  = bias["score"]
+        label  = bias["label"]
+        grp    = bias["group_scores"]
+        sent   = ind.get("sentiment", {})
+        fg     = sent.get("fear_greed", {})
+        fr     = sent.get("funding_rate", {})
+        oi     = sent.get("open_interest", {})
+        halv   = ind.get("btc_specific", {}).get("halving", {})
+
+        bullets = []
+        # Bias summary
+        direction_word = "bullish" if score > 0.2 else ("bearish" if score < -0.2 else "neutral")
+        bullets.append(f"**Overall bias is {label} ({score:+.2f})** — macro, sentiment, technicals, and cross-asset signals combine to a {direction_word} lean.")
+
+        # Strongest group
+        top_group  = max(grp, key=lambda k: abs(grp[k]))
+        top_val    = grp[top_group]
+        top_lbl    = "bullish" if top_val > 0 else "bearish"
+        bullets.append(f"The **{top_group.replace('_',' ').title()}** group is the dominant driver ({top_val:+.2f}), pulling {top_lbl}.")
+
+        # Halving context
+        phase = halv.get("phase", "")
+        if phase:
+            bullets.append(f"BTC is in the **{phase}** halving cycle phase ({halv.get('months_since', 0):.0f} months post-April 2024 halving) → {('structural tailwind' if phase in ('Early Bull', 'Pre-Halving') else 'elevated caution zone')}.")
+
+        # Fear & Greed
+        fg_val = fg.get("value")
+        if fg_val is not None:
+            fg_cls = fg.get("classification", "")
+            bullets.append(f"Fear & Greed Index is **{fg_val} ({fg_cls})** — {'contrarian buy signal (extreme fear)' if fg_val < 20 else ('contrarian caution (extreme greed)' if fg_val > 80 else 'neutral sentiment zone')}.")
+
+        # Funding rate
+        fr_cur = fr.get("current")
+        fr_sig = fr.get("signal", "neutral")
+        if fr_cur is not None:
+            fr_msg = {
+                "extreme_long":  f"⚠️ Perp funding at **{fr_cur:+.4f}%/8h** — extremely crowded longs; contrarian bearish risk.",
+                "mild_long":     f"Perp funding at **{fr_cur:+.4f}%/8h** — mild long bias, no extreme crowding.",
+                "extreme_short": f"Perp funding at **{fr_cur:+.4f}%/8h** — shorts crowded; short-squeeze potential (bullish).",
+                "neutral":       f"Perp funding near neutral ({fr_cur:+.4f}%/8h) — balanced derivative positioning.",
+            }.get(fr_sig, "")
+            if fr_msg:
+                bullets.append(fr_msg)
+
+        # OI regime
+        regime = oi.get("regime", "")
+        regime_msg = {
+            "confirmed_bull":      "OI rising with price — **confirmed bullish trend**; institutional money entering.",
+            "bearish_distribution": "OI rising while price falls — **bearish distribution**; watch for breakdown.",
+            "short_covering":       "OI falling with price rising — likely **short covering**, not fresh longs; watch breakout quality.",
+            "bearish_liquidation":  "OI falling with price falling — **bearish liquidation**; trend may accelerate down.",
+        }.get(regime, "")
+        if regime_msg:
+            bullets.append(regime_msg)
+
+        return "\n\n".join(f"- {b}" for b in bullets)
+
+    narrative = _build_narrative(bias, ind)
+    with st.expander("Weekly Bias Summary — Key Drivers", expanded=True):
+        st.markdown(narrative)
 
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
@@ -427,6 +490,86 @@ def main():
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
     # ════════════════════════════════════════════════════════════════════
+    # SECTION 4.5: DERIVATIVES — FUNDING RATE + OPEN INTEREST
+    # ════════════════════════════════════════════════════════════════════
+    st.markdown("### Derivatives Market — Funding Rate & Open Interest")
+    st.caption(
+        "Perpetual futures data from Binance (free, no API key). "
+        "Extreme positive funding = too many longs → contrarian bearish. "
+        "Extreme negative = shorts crowded → squeeze potential."
+    )
+
+    fr_data  = ind.get("sentiment", {}).get("funding_rate",  {})
+    oi_data  = ind.get("sentiment", {}).get("open_interest", {})
+
+    dr1, dr2, dr3, dr4 = st.columns(4)
+    with dr1:
+        fr_cur = fr_data.get("current")
+        fr_sig = fr_data.get("signal", "neutral")
+        fr_signal_labels = {
+            "extreme_long":   "⚠️ Extreme Long (Bear Risk)",
+            "mild_long":      "Mild Long Bias",
+            "extreme_short":  "Extreme Short (Bull Squeeze)",
+            "neutral":        "Neutral",
+        }
+        fr_pos = {"extreme_short": True, "neutral": None, "mild_long": None, "extreme_long": False}.get(fr_sig)
+        metric_card(
+            "Funding Rate (/8h)",
+            f"{fr_cur:+.4f}%" if fr_cur is not None else "N/A",
+            fr_signal_labels.get(fr_sig, ""),
+            change_positive=fr_pos,
+        )
+    with dr2:
+        fr_avg = fr_data.get("avg_7d")
+        metric_card(
+            "Funding 7D Avg (/8h)",
+            f"{fr_avg:+.4f}%" if fr_avg is not None else "N/A",
+            "7-day average funding rate",
+            change_positive=(fr_avg < 0) if fr_avg is not None else None,
+        )
+    with dr3:
+        oi_b    = oi_data.get("current_b")
+        oi_chg  = oi_data.get("oi_chg_pct")
+        oi_rise = oi_data.get("oi_rising")
+        metric_card(
+            "Open Interest",
+            f"${oi_b:.2f}B" if oi_b is not None else "N/A",
+            (f"{'▲' if oi_rise else '▼'} {abs(oi_chg):.1f}% (4D)" if oi_chg is not None else ""),
+            change_positive=oi_rise,
+        )
+    with dr4:
+        regime = oi_data.get("regime", "unknown")
+        regime_labels = {
+            "confirmed_bull":       "Confirmed Bull",
+            "bearish_distribution": "Bearish Distribution",
+            "short_covering":       "Short Covering",
+            "bearish_liquidation":  "Bearish Liquidation",
+            "unknown":              "N/A",
+        }
+        regime_pos = {
+            "confirmed_bull":       True,
+            "short_covering":       None,
+            "bearish_distribution": False,
+            "bearish_liquidation":  False,
+        }.get(regime)
+        metric_card(
+            "OI Regime",
+            regime_labels.get(regime, regime),
+            "OI trend vs price direction",
+            change_positive=regime_pos,
+        )
+
+    dr_c1, dr_c2 = st.columns(2)
+    with dr_c1:
+        fig_fr = charts.chart_funding_rate(fr_data)
+        st.plotly_chart(fig_fr, use_container_width=True, config={"displayModeBar": False})
+    with dr_c2:
+        fig_oi = charts.chart_open_interest(oi_data, data["prices"])
+        st.plotly_chart(fig_oi, use_container_width=True, config={"displayModeBar": False})
+
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+
+    # ════════════════════════════════════════════════════════════════════
     # SECTION 5: TECHNICAL PANEL
     # ════════════════════════════════════════════════════════════════════
     st.markdown("### Technical — Weekly")
@@ -471,6 +614,116 @@ def main():
     with macd_col:
         fig_macd = charts.chart_macd(data["prices"])
         st.plotly_chart(fig_macd, use_container_width=True, config={"displayModeBar": False})
+
+    # Bollinger Bands
+    bb_data = tech.get("bollinger_bands", {})
+    if bb_data:
+        fig_bb = charts.chart_bollinger_bands(data["prices"], bb_data)
+        st.plotly_chart(fig_bb, use_container_width=True, config={"displayModeBar": False})
+
+        bb1, bb2, bb3, bb4 = st.columns(4)
+        with bb1:
+            metric_card("BB Upper (20W,2σ)", _fmt_btc(bb_data.get("upper")), "")
+        with bb2:
+            metric_card("BB Middle (20W MA)", _fmt_btc(bb_data.get("middle")), "")
+        with bb3:
+            metric_card("BB Lower (20W,2σ)", _fmt_btc(bb_data.get("lower")), "")
+        with bb4:
+            pct_b   = bb_data.get("pct_b")
+            bw      = bb_data.get("bandwidth")
+            bw_str  = f"BW: {bw:.1f}%" if bw else ""
+            ob_zone = bb_data.get("overbought")
+            os_zone = bb_data.get("oversold")
+            bb_zone = ("Near/Above Upper" if ob_zone else ("Near/Below Lower" if os_zone else "Mid-range"))
+            metric_card("%B Position", f"{pct_b:.1f}%" if pct_b is not None else "N/A",
+                        f"{bb_zone} | {bw_str}", change_positive=os_zone if os_zone else (not ob_zone if ob_zone is not None else None))
+
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+
+    # ════════════════════════════════════════════════════════════════════
+    # SECTION 5.5: KEY PRICE LEVELS & VOLATILITY PARAMETERS
+    # ════════════════════════════════════════════════════════════════════
+    st.markdown("### Key Price Levels & Volatility Parameters")
+    st.caption(
+        "Essential trade reference levels: ATH, 52-week range, psychological levels, "
+        "daily ATR(14) for stop sizing, and weekly candle range."
+    )
+
+    kl = ind.get("key_levels", {})
+    if kl:
+        kp1, kp2, kp3, kp4, kp5 = st.columns(5)
+        with kp1:
+            ath_d = kl.get("ath_dist_pct")
+            metric_card(
+                "All-Time High",
+                _fmt_btc(kl.get("ath")),
+                f"{ath_d:+.1f}% from current" if ath_d is not None else "",
+                change_positive=None,
+            )
+        with kp2:
+            metric_card(
+                "52-Week High",
+                _fmt_btc(kl.get("w52_high")),
+                f"{kl.get('w52_high_dist', 0):+.1f}% from current",
+                change_positive=None,
+            )
+        with kp3:
+            metric_card(
+                "52-Week Low",
+                _fmt_btc(kl.get("w52_low")),
+                f"{kl.get('w52_low_dist', 0):+.1f}% from current",
+                change_positive=None,
+            )
+        with kp4:
+            atr   = kl.get("daily_atr")
+            atr_p = round(atr / kl["current_price"] * 100, 2) if atr and kl.get("current_price") else None
+            metric_card(
+                "Daily ATR(14)",
+                _fmt_btc(atr) if atr else "N/A",
+                f"{atr_p:.2f}% of price — use for stop sizing" if atr_p else "",
+                change_positive=None,
+            )
+        with kp5:
+            wk_r = kl.get("weekly_range_pct")
+            metric_card(
+                "Weekly Candle Range",
+                f"{wk_r:.2f}%" if wk_r else "N/A",
+                f"H: {_fmt_btc(kl.get('weekly_high'))}  L: {_fmt_btc(kl.get('weekly_low'))}",
+                change_positive=None,
+            )
+
+        # Psychological levels table
+        above = kl.get("nearest_above", [])
+        below = kl.get("nearest_below", [])
+        current_price = kl.get("current_price", 0)
+
+        psych_cols = st.columns(len(above) + 1 + len(below))
+        col_idx = 0
+        for item in sorted(above, key=lambda x: -x["level"]):
+            with psych_cols[col_idx]:
+                metric_card(
+                    f"${item['level']:,} (Resistance)",
+                    f"{item['dist_pct']:+.1f}%",
+                    "Above current",
+                    change_positive=None,
+                )
+            col_idx += 1
+        with psych_cols[col_idx]:
+            metric_card("Current BTC", _fmt_btc(current_price), "▲ Resistance above | ▼ Support below", change_positive=None)
+        col_idx += 1
+        for item in sorted(below, key=lambda x: -x["level"]):
+            with psych_cols[col_idx]:
+                metric_card(
+                    f"${item['level']:,} (Support)",
+                    f"{item['dist_pct']:+.1f}%",
+                    "Below current",
+                    change_positive=None,
+                )
+            col_idx += 1
+
+        # Distance chart
+        fig_kl = charts.chart_key_levels_distance(kl)
+        st.plotly_chart(fig_kl, use_container_width=True, config={"displayModeBar": False})
 
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
@@ -718,6 +971,83 @@ def main():
                 """, unsafe_allow_html=True)
                 if trade.get("key_levels_used"):
                     st.caption("📌 " + " · ".join(trade["key_levels_used"]))
+
+        # ── Position Sizing Panel ─────────────────────────────────────
+        st.markdown("#### Trade Execution Parameters")
+        st.caption(
+            "Position sizes calculated from stop distance at 1% and 2% account risk. "
+            "Daily ATR used to assess stop quality. Adjust to your account size."
+        )
+
+        daily_atr_val = ind.get("key_levels", {}).get("daily_atr")
+        current_btc   = ind.get("btc_price")
+
+        ps_cols = st.columns(len(ict_trades))
+        for col, trade in zip(ps_cols, ict_trades):
+            if trade["direction"] == "WAIT":
+                with col:
+                    st.markdown("<div class='metric-card' style='opacity:0.5;'><div class='metric-label'>WAIT — No Setup</div></div>",
+                                unsafe_allow_html=True)
+                continue
+
+            entry = trade.get("entry") or 0
+            stop  = trade.get("stop")  or 0
+            if entry == 0 or stop == 0:
+                continue
+
+            stop_dist_usd = abs(entry - stop)
+            stop_dist_pct = round(stop_dist_usd / entry * 100, 2) if entry > 0 else None
+
+            # Multiples of ATR
+            atr_mult = round(stop_dist_usd / daily_atr_val, 2) if daily_atr_val and daily_atr_val > 0 else None
+
+            # Position sizes (contracts in BTC) at 1% and 2% risk
+            def _pos_size(acct_usd, risk_pct):
+                if stop_dist_usd == 0:
+                    return None
+                risk_usd = acct_usd * risk_pct / 100
+                btc_qty  = risk_usd / stop_dist_usd
+                return round(btc_qty, 4)
+
+            ps_10k_1 = _pos_size(10_000, 1)
+            ps_10k_2 = _pos_size(10_000, 2)
+            ps_50k_1 = _pos_size(50_000, 1)
+
+            rr1 = trade.get("rr1") or 0
+            rr2 = trade.get("rr2") or 0
+
+            d_color = "#00C853" if trade["direction"] == "LONG" else "#D50000"
+
+            atr_str  = f"{daily_atr_val:,.0f}" if daily_atr_val else "N/A"
+            atr_mult_str = f"{atr_mult:.1f}" if atr_mult is not None else "N/A"
+            with col:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div style="font-size:11px; color:#888; margin-bottom:6px;">
+                        Trade {trade['id']} — Execution Parameters
+                    </div>
+                    <div style="font-size:12px; color:#FAFAFA; line-height:2.0;">
+                        <b>Stop Dist:</b> &nbsp;${stop_dist_usd:,.0f}
+                            <span style="color:#888; font-size:11px;">&nbsp;({stop_dist_pct:+.2f}%)</span><br>
+                        <b>ATR mult:</b> &nbsp;{atr_mult_str}&times; ATR(14)
+                            <span style="color:#888; font-size:11px;">&nbsp;(ATR&#8776;${atr_str})</span><br>
+                        <div style="border-top:1px solid #2A2D35; margin: 6px 0;"></div>
+                        <b>Position size (BTC) @ 1% risk</b><br>
+                        &nbsp;$10K acct: <span style="color:{d_color};">{ps_10k_1} BTC</span><br>
+                        &nbsp;$50K acct: <span style="color:{d_color};">{ps_50k_1} BTC</span><br>
+                        &nbsp;$10K @ 2%: <span style="color:{d_color};">{ps_10k_2} BTC</span><br>
+                        <div style="border-top:1px solid #2A2D35; margin: 6px 0;"></div>
+                        <b>R:R Targets</b><br>
+                        &nbsp;TP1: <span style="color:#69F0AE;">{rr1:.2f}R</span>
+                            &nbsp;TP2: <span style="color:#00C853;">{rr2:.2f}R</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        st.markdown('<div style="margin-top:6px; font-size:11px; color:#666;">'
+                    '⚠️ Position sizes are illustrative only. Always size based on your own risk tolerance, '
+                    'account type (spot vs leveraged), and market liquidity. Not financial advice.'
+                    '</div>', unsafe_allow_html=True)
 
         # ── ICT Chart ─────────────────────────────────────────────────
         fig_ict = charts.chart_ict_levels(

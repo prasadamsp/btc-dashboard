@@ -164,6 +164,18 @@ def score_etf_flows(sentiment: dict) -> int:
     return 0
 
 
+def score_funding_rate(sentiment: dict) -> int:
+    """
+    Perpetual funding rate signal:
+    Extreme positive (>0.05%/8h) = too many longs = contrarian BEARISH.
+    Extreme negative (<-0.01%/8h) = shorts crowded = contrarian BULLISH.
+    """
+    score = sentiment.get("funding_rate", {}).get("score")
+    if score is None:
+        return 0
+    return int(score)
+
+
 def score_btc_eth(sentiment: dict) -> int:
     """
     Rising BTC/ETH ratio = BTC outperforming = BTC dominance increasing.
@@ -337,15 +349,17 @@ def score_all(indicators: dict) -> dict:
         for k in macro_scores
     )
 
-    # ── Sentiment scores ──
+    # ── Sentiment scores ── (uses v2 weights including funding rate)
     sentiment_scores = {
-        "fear_greed": score_fear_greed(sent),
-        "etf_flows":  score_etf_flows(sent),
-        "cot_index":  score_cot_index(sent),
-        "btc_eth":    score_btc_eth(sent),
+        "fear_greed":   score_fear_greed(sent),
+        "etf_flows":    score_etf_flows(sent),
+        "cot_index":    score_cot_index(sent),
+        "btc_eth":      score_btc_eth(sent),
+        "funding_rate": score_funding_rate(sent),
     }
+    sw = config.SENTIMENT_SUB_WEIGHTS_V2
     sentiment_group = sum(
-        sentiment_scores[k] * config.SENTIMENT_SUB_WEIGHTS.get(k, 0)
+        sentiment_scores[k] * sw.get(k, 0)
         for k in sentiment_scores
     )
 

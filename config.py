@@ -200,6 +200,36 @@ BLOCKCHAIN_TIMESPAN = "2years"          # timespan param for blockchain.com API
 COINGECKO_GLOBAL_URL = "https://api.coingecko.com/api/v3/global"
 
 # ---------------------------------------------------------------------------
+# Binance Futures public API (no key required)
+# ---------------------------------------------------------------------------
+BINANCE_FUNDING_URL     = "https://fapi.binance.com/fapi/v1/fundingRate"
+BINANCE_OI_HIST_URL     = "https://fapi.binance.com/futures/data/openInterestHist"
+BINANCE_FUTURES_SYMBOL  = "BTCUSDT"
+BINANCE_FUNDING_LIMIT   = 100           # funding rate records to fetch (~33 days at 8h intervals)
+BINANCE_OI_HIST_PERIOD  = "1d"
+BINANCE_OI_HIST_LIMIT   = 30           # 30 days of daily OI
+
+# Funding rate signal thresholds (as % per 8h period)
+FUNDING_EXTREME_LONG    = 0.05         # > 0.05% → very crowded longs → bearish signal
+FUNDING_MILD_LONG       = 0.01         # 0.01–0.05% → mild long bias → neutral
+FUNDING_EXTREME_SHORT   = -0.01        # < -0.01% → shorts crowded → contrarian bullish
+
+# ---------------------------------------------------------------------------
+# Bollinger Bands parameters (weekly)
+# ---------------------------------------------------------------------------
+BB_PERIOD   = 20    # 20-week BB (same as 20W MA already tracked)
+BB_STD_MULT = 2.0   # standard deviation multiplier
+
+# ---------------------------------------------------------------------------
+# Psychological price levels to monitor
+# ---------------------------------------------------------------------------
+BTC_PSYCH_LEVELS = [
+    10_000, 20_000, 30_000, 40_000, 50_000,
+    60_000, 70_000, 75_000, 80_000, 90_000,
+    100_000, 110_000, 120_000, 150_000, 200_000,
+]
+
+# ---------------------------------------------------------------------------
 # Updated MACRO_SUB_WEIGHTS — includes BTC-specific halving + hashrate signals
 # (reduced dxy and real_yield slightly to accommodate new BTC fundamentals)
 # ---------------------------------------------------------------------------
@@ -213,4 +243,14 @@ MACRO_SUB_WEIGHTS = {
     "yield_curve":  0.05,   # 10Y-2Y spread direction
     "halving":      0.10,   # BTC halving cycle phase (unique to BTC)
     "hashrate":     0.05,   # Network hash rate trend (miner confidence)
+}
+
+# Sentiment sub-weights v2 — added funding_rate signal (perpetual market sentiment)
+# Reduced fear_greed and etf_flows by 5% each to accommodate new derivative signal
+SENTIMENT_SUB_WEIGHTS_V2 = {
+    "fear_greed":    0.30,   # Crypto Fear & Greed Index (contrarian)
+    "etf_flows":     0.30,   # BTC spot ETF net flows
+    "cot_index":     0.20,   # CME BTC futures COT percentile (contrarian)
+    "btc_eth":       0.10,   # BTC/ETH ratio trend (BTC dominance proxy)
+    "funding_rate":  0.10,   # Perp funding rate (extreme longs = bearish, shorts = bullish)
 }
