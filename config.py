@@ -200,14 +200,14 @@ BLOCKCHAIN_TIMESPAN = "2years"          # timespan param for blockchain.com API
 COINGECKO_GLOBAL_URL = "https://api.coingecko.com/api/v3/global"
 
 # ---------------------------------------------------------------------------
-# Bybit public API — funding rate + open interest (no key, no geo-block)
+# OKX public API — funding rate + open interest (no key, globally accessible)
 # ---------------------------------------------------------------------------
-BYBIT_FUNDING_URL   = "https://api.bybit.com/v5/market/funding/history"
-BYBIT_OI_URL        = "https://api.bybit.com/v5/market/open-interest"
-BYBIT_SYMBOL        = "BTCUSDT"
-BYBIT_FUNDING_LIMIT = 200           # records (~66 days at 8h intervals)
-BYBIT_OI_INTERVAL   = "1d"
-BYBIT_OI_LIMIT      = 30           # 30 daily OI bars
+OKX_FUNDING_URL     = "https://www.okx.com/api/v5/public/funding-rate-history"
+OKX_OI_URL          = "https://www.okx.com/api/v5/rubik/stat/contracts/open-interest-volume"
+OKX_INSTRUMENT      = "BTC-USDT-SWAP"
+OKX_FUNDING_LIMIT   = 200           # records (~66 days at 8h intervals)
+OKX_OI_PERIOD       = "1D"
+OKX_OI_LIMIT        = 30           # 30 daily OI bars
 
 # Funding rate signal thresholds (as % per 8h period)
 FUNDING_EXTREME_LONG    = 0.05         # > 0.05% → very crowded longs → bearish signal

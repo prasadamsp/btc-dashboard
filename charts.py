@@ -12,6 +12,13 @@ BULL_COLOR    = "#00C853"
 BEAR_COLOR    = "#D50000"
 NEUTRAL_COLOR = "#FFD740"
 BTC_COLOR     = "#F7931A"     # Official Bitcoin orange
+
+
+def _hex_rgba(hex_color: str, alpha: float) -> str:
+    """Convert #RRGGBB hex + alpha float → 'rgba(r,g,b,a)' for Plotly compatibility."""
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha})"
 ETH_COLOR     = "#627EEA"     # Ethereum purple-blue
 BG_COLOR      = "#0E1117"
 GRID_COLOR    = "#1E2129"
@@ -522,7 +529,7 @@ def chart_hashrate(onchain_snapshot: dict) -> go.Figure:
     fig.add_trace(go.Scatter(
         x=series.index, y=series.values,
         name="Hash Rate (EH/s)", line=dict(color=color, width=2),
-        fill="tozeroy", fillcolor=f"{color}15",
+        fill="tozeroy", fillcolor=_hex_rgba(color, 0.08),
     ))
     trend_pct = hr.get("trend_pct")
     trend_str = f"4W trend: {'▲' if trend_pct and trend_pct > 0 else '▼'} {abs(trend_pct):.1f}%" if trend_pct is not None else ""
@@ -552,7 +559,7 @@ def chart_miner_revenue(onchain_snapshot: dict) -> go.Figure:
     fig.add_trace(go.Scatter(
         x=series.index, y=series.values / 1e6,  # convert to millions
         name="Miner Revenue ($M/day)", line=dict(color=color, width=1.8),
-        fill="tozeroy", fillcolor=f"{color}12",
+        fill="tozeroy", fillcolor=_hex_rgba(color, 0.07),
     ))
     _apply_layout(fig, title="BTC Miner Daily Revenue ($M/day) — Rising = Healthy Network",
                   height=220, yaxis=dict(gridcolor=GRID_COLOR, tickprefix="$", ticksuffix="M"))
@@ -636,7 +643,7 @@ def chart_funding_rate(funding_signal: dict) -> go.Figure:
     series = funding_signal.get("series")
     if series is None or (isinstance(series, pd.DataFrame) and series.empty):
         fig = go.Figure()
-        fig.add_annotation(text="Funding rate data unavailable (Binance API)",
+        fig.add_annotation(text="Funding rate data unavailable (OKX API)",
                            xref="paper", yref="paper", x=0.5, y=0.5,
                            showarrow=False, font=dict(color=TEXT_COLOR, size=14))
         _apply_layout(fig, title="BTC Perp Funding Rate (8h)", height=250)
@@ -667,7 +674,7 @@ def chart_funding_rate(funding_signal: dict) -> go.Figure:
                   annotation_font=dict(size=9, color=BULL_COLOR))
     fig.add_hline(y=0, line=dict(color="#555", width=1))
 
-    _apply_layout(fig, title="BTC/USDT Perp Funding Rate (8h) — Source: Bybit",
+    _apply_layout(fig, title="BTC/USDT Perp Funding Rate (8h) — Source: OKX",
                   height=260, yaxis=dict(gridcolor=GRID_COLOR, ticksuffix="%"))
     return fig
 
@@ -681,7 +688,7 @@ def chart_open_interest(oi_signal: dict, prices: dict) -> go.Figure:
     oi_df = oi_signal.get("series")
     if oi_df is None or (isinstance(oi_df, pd.DataFrame) and oi_df.empty):
         fig = go.Figure()
-        fig.add_annotation(text="Open interest data unavailable (Binance API)",
+        fig.add_annotation(text="Open interest data unavailable (OKX API)",
                            xref="paper", yref="paper", x=0.5, y=0.5,
                            showarrow=False, font=dict(color=TEXT_COLOR, size=14))
         _apply_layout(fig, title="BTC Perp Open Interest", height=250)

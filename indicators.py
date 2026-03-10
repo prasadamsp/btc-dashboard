@@ -646,13 +646,13 @@ def calc_funding_rate_signal(funding_df: pd.DataFrame) -> dict:
 
 def calc_oi_signal(oi_df: pd.DataFrame, prices: dict) -> dict:
     """
-    Detect OI trend vs price divergence (Bybit OI is in BTC units — converted to USD here).
+    Detect OI trend vs price divergence (OKX OI is in USD — used directly).
     - OI rising + price rising  → confirmed bullish trend
     - OI rising + price falling → bearish distribution
     - OI falling + price rising → short covering / weak breakout
     - OI falling + price falling → bearish liquidation
     """
-    # Accept either oi_btc (Bybit) or oi_usd (legacy) column
+    # Accept either oi_btc (contracts in BTC) or oi_usd (USD value from OKX)
     if oi_df.empty or ("oi_btc" not in oi_df.columns and "oi_usd" not in oi_df.columns):
         return {"current_b": None, "oi_chg_pct": None, "oi_rising": None,
                 "regime": "unknown", "series": oi_df}

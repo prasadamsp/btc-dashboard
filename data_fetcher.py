@@ -370,32 +370,31 @@ def fetch_btc_dominance() -> float | None:
 
 
 # ---------------------------------------------------------------------------
-# Bybit public API — Funding Rate (no API key, no geo-block)
+# OKX public API — Funding Rate (no API key, globally accessible)
 # ---------------------------------------------------------------------------
 
 def fetch_funding_rate() -> pd.DataFrame:
     """
-    Fetch BTC/USDT perpetual funding rate history from Bybit v5 public API.
+    Fetch BTC/USDT perpetual funding rate history from OKX v5 public API.
     Returns DataFrame with column: rate (% per 8h), indexed by timestamp.
     No API key required.
     """
     try:
         resp = requests.get(
-            config.BYBIT_FUNDING_URL,
+            config.OKX_FUNDING_URL,
             params={
-                "category": "linear",
-                "symbol":   config.BYBIT_SYMBOL,
-                "limit":    config.BYBIT_FUNDING_LIMIT,
+                "instId": config.OKX_INSTRUMENT,
+                "limit":  config.OKX_FUNDING_LIMIT,
             },
             timeout=10,
         )
         resp.raise_for_status()
-        records = resp.json().get("result", {}).get("list", [])
+        records = resp.json().get("data", [])
         if not records:
             return pd.DataFrame(columns=["rate"])
         rows = [
             {
-                "timestamp": pd.to_datetime(int(r["fundingRateTimestamp"]), unit="ms"),
+                "timestamp": pd.to_datetime(int(r["fundingTime"]), unit="ms"),
                 "rate":      float(r["fundingRate"]) * 100,   # convert to %
             }
             for r in records
@@ -408,43 +407,41 @@ def fetch_funding_rate() -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Bybit public API — Open Interest History (no API key, no geo-block)
+# OKX public API — Open Interest History (no API key, globally accessible)
 # ---------------------------------------------------------------------------
 
 def fetch_open_interest_hist() -> pd.DataFrame:
     """
-    Fetch BTC/USDT perpetual open interest history from Bybit v5 (30 daily bars).
-    Returns DataFrame with columns: oi_btc (contracts in BTC), indexed by date.
-    oi_usd is computed in indicators.py using live BTC price.
+    Fetch BTC perpetual open interest history from OKX v5 (30 daily bars).
+    Returns DataFrame with column: oi_usd (USD value), indexed by date.
     No API key required.
     """
     try:
         resp = requests.get(
-            config.BYBIT_OI_URL,
+            config.OKX_OI_URL,
             params={
-                "category":     "linear",
-                "symbol":       config.BYBIT_SYMBOL,
-                "intervalTime": config.BYBIT_OI_INTERVAL,
-                "limit":        config.BYBIT_OI_LIMIT,
+                "ccy":    "BTC",
+                "period": config.OKX_OI_PERIOD,
             },
             timeout=10,
         )
         resp.raise_for_status()
-        records = resp.json().get("result", {}).get("list", [])
+        records = resp.json().get("data", [])
         if not records:
-            return pd.DataFrame(columns=["oi_btc"])
+            return pd.DataFrame(columns=["oi_usd"])
         rows = [
             {
-                "timestamp": pd.to_datetime(int(r["timestamp"]), unit="ms").normalize(),
-                "oi_btc":    float(r["openInterest"]),
+                "timestamp": pd.to_datetime(int(r[0]), unit="ms").normalize(),
+                "oi_usd":    float(r[1]),
             }
             for r in records
         ]
         df = pd.DataFrame(rows).sort_values("timestamp").set_index("timestamp")
+        df = df.tail(config.OKX_OI_LIMIT)
         df.index = pd.to_datetime(df.index).tz_localize(None)
         return df
     except Exception:
-        return pd.DataFrame(columns=["oi_btc"])
+        return pd.DataFrame(columns=["oi_usd"])
 
 
 # ---------------------------------------------------------------------------
