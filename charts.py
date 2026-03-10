@@ -667,7 +667,7 @@ def chart_funding_rate(funding_signal: dict) -> go.Figure:
                   annotation_font=dict(size=9, color=BULL_COLOR))
     fig.add_hline(y=0, line=dict(color="#555", width=1))
 
-    _apply_layout(fig, title="BTC/USDT Perp Funding Rate (8h) — Source: Binance",
+    _apply_layout(fig, title="BTC/USDT Perp Funding Rate (8h) — Source: Bybit",
                   height=260, yaxis=dict(gridcolor=GRID_COLOR, ticksuffix="%"))
     return fig
 

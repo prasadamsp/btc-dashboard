@@ -370,29 +370,37 @@ def fetch_btc_dominance() -> float | None:
 
 
 # ---------------------------------------------------------------------------
-# Binance Futures public API — Funding Rate (no API key required)
+# Bybit public API — Funding Rate (no API key, no geo-block)
 # ---------------------------------------------------------------------------
 
 def fetch_funding_rate() -> pd.DataFrame:
     """
-    Fetch BTC/USDT perpetual funding rate history from Binance public endpoint.
-    Returns DataFrame with columns: rate (% per 8h), indexed by date.
+    Fetch BTC/USDT perpetual funding rate history from Bybit v5 public API.
+    Returns DataFrame with column: rate (% per 8h), indexed by timestamp.
     No API key required.
     """
     try:
         resp = requests.get(
-            config.BINANCE_FUNDING_URL,
-            params={"symbol": config.BINANCE_FUTURES_SYMBOL, "limit": config.BINANCE_FUNDING_LIMIT},
+            config.BYBIT_FUNDING_URL,
+            params={
+                "category": "linear",
+                "symbol":   config.BYBIT_SYMBOL,
+                "limit":    config.BYBIT_FUNDING_LIMIT,
+            },
             timeout=10,
         )
         resp.raise_for_status()
-        data = resp.json()
-        if not data:
+        records = resp.json().get("result", {}).get("list", [])
+        if not records:
             return pd.DataFrame(columns=["rate"])
-        df = pd.DataFrame(data)
-        df["timestamp"] = pd.to_datetime(df["fundingTime"], unit="ms")
-        df["rate"] = df["fundingRate"].astype(float) * 100    # convert to %
-        df = df[["timestamp", "rate"]].sort_values("timestamp").set_index("timestamp")
+        rows = [
+            {
+                "timestamp": pd.to_datetime(int(r["fundingRateTimestamp"]), unit="ms"),
+                "rate":      float(r["fundingRate"]) * 100,   # convert to %
+            }
+            for r in records
+        ]
+        df = pd.DataFrame(rows).sort_values("timestamp").set_index("timestamp")
         df.index = pd.to_datetime(df.index).tz_localize(None)
         return df
     except Exception:
@@ -400,38 +408,43 @@ def fetch_funding_rate() -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Binance Futures — Open Interest History (no API key required)
+# Bybit public API — Open Interest History (no API key, no geo-block)
 # ---------------------------------------------------------------------------
 
 def fetch_open_interest_hist() -> pd.DataFrame:
     """
-    Fetch BTC/USDT perpetual open interest history from Binance (30 daily bars).
-    Returns DataFrame with columns: oi_usd, oi_btc, indexed by date.
+    Fetch BTC/USDT perpetual open interest history from Bybit v5 (30 daily bars).
+    Returns DataFrame with columns: oi_btc (contracts in BTC), indexed by date.
+    oi_usd is computed in indicators.py using live BTC price.
     No API key required.
     """
     try:
         resp = requests.get(
-            config.BINANCE_OI_HIST_URL,
+            config.BYBIT_OI_URL,
             params={
-                "symbol": config.BINANCE_FUTURES_SYMBOL,
-                "period": config.BINANCE_OI_HIST_PERIOD,
-                "limit":  config.BINANCE_OI_HIST_LIMIT,
+                "category":     "linear",
+                "symbol":       config.BYBIT_SYMBOL,
+                "intervalTime": config.BYBIT_OI_INTERVAL,
+                "limit":        config.BYBIT_OI_LIMIT,
             },
             timeout=10,
         )
         resp.raise_for_status()
-        data = resp.json()
-        if not data:
-            return pd.DataFrame(columns=["oi_usd", "oi_btc"])
-        df = pd.DataFrame(data)
-        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms").dt.normalize()
-        df["oi_usd"] = df["sumOpenInterestValue"].astype(float)
-        df["oi_btc"] = df["sumOpenInterest"].astype(float)
-        df = df[["timestamp", "oi_usd", "oi_btc"]].sort_values("timestamp").set_index("timestamp")
+        records = resp.json().get("result", {}).get("list", [])
+        if not records:
+            return pd.DataFrame(columns=["oi_btc"])
+        rows = [
+            {
+                "timestamp": pd.to_datetime(int(r["timestamp"]), unit="ms").normalize(),
+                "oi_btc":    float(r["openInterest"]),
+            }
+            for r in records
+        ]
+        df = pd.DataFrame(rows).sort_values("timestamp").set_index("timestamp")
         df.index = pd.to_datetime(df.index).tz_localize(None)
         return df
     except Exception:
-        return pd.DataFrame(columns=["oi_usd", "oi_btc"])
+        return pd.DataFrame(columns=["oi_btc"])
 
 
 # ---------------------------------------------------------------------------

@@ -200,14 +200,14 @@ BLOCKCHAIN_TIMESPAN = "2years"          # timespan param for blockchain.com API
 COINGECKO_GLOBAL_URL = "https://api.coingecko.com/api/v3/global"
 
 # ---------------------------------------------------------------------------
-# Binance Futures public API (no key required)
+# Bybit public API — funding rate + open interest (no key, no geo-block)
 # ---------------------------------------------------------------------------
-BINANCE_FUNDING_URL     = "https://fapi.binance.com/fapi/v1/fundingRate"
-BINANCE_OI_HIST_URL     = "https://fapi.binance.com/futures/data/openInterestHist"
-BINANCE_FUTURES_SYMBOL  = "BTCUSDT"
-BINANCE_FUNDING_LIMIT   = 100           # funding rate records to fetch (~33 days at 8h intervals)
-BINANCE_OI_HIST_PERIOD  = "1d"
-BINANCE_OI_HIST_LIMIT   = 30           # 30 days of daily OI
+BYBIT_FUNDING_URL   = "https://api.bybit.com/v5/market/funding/history"
+BYBIT_OI_URL        = "https://api.bybit.com/v5/market/open-interest"
+BYBIT_SYMBOL        = "BTCUSDT"
+BYBIT_FUNDING_LIMIT = 200           # records (~66 days at 8h intervals)
+BYBIT_OI_INTERVAL   = "1d"
+BYBIT_OI_LIMIT      = 30           # 30 daily OI bars
 
 # Funding rate signal thresholds (as % per 8h period)
 FUNDING_EXTREME_LONG    = 0.05         # > 0.05% → very crowded longs → bearish signal

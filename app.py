@@ -494,7 +494,7 @@ def main():
     # ════════════════════════════════════════════════════════════════════
     st.markdown("### Derivatives Market — Funding Rate & Open Interest")
     st.caption(
-        "Perpetual futures data from Binance (free, no API key). "
+        "Perpetual futures data from Bybit (free, no API key). "
         "Extreme positive funding = too many longs → contrarian bearish. "
         "Extreme negative = shorts crowded → squeeze potential."
     )

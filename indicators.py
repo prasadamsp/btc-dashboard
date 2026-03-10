@@ -646,22 +646,31 @@ def calc_funding_rate_signal(funding_df: pd.DataFrame) -> dict:
 
 def calc_oi_signal(oi_df: pd.DataFrame, prices: dict) -> dict:
     """
-    Detect OI trend vs price divergence:
+    Detect OI trend vs price divergence (Bybit OI is in BTC units — converted to USD here).
     - OI rising + price rising  → confirmed bullish trend
     - OI rising + price falling → bearish distribution
     - OI falling + price rising → short covering / weak breakout
     - OI falling + price falling → bearish liquidation
     """
-    if oi_df.empty or "oi_usd" not in oi_df.columns:
-        return {"current_b": None, "trend": "unknown", "regime": "unknown", "series": oi_df}
+    # Accept either oi_btc (Bybit) or oi_usd (legacy) column
+    if oi_df.empty or ("oi_btc" not in oi_df.columns and "oi_usd" not in oi_df.columns):
+        return {"current_b": None, "oi_chg_pct": None, "oi_rising": None,
+                "regime": "unknown", "series": oi_df}
+
+    btc_close = prices.get("btc", pd.DataFrame()).get("Close", pd.Series()).dropna()
+    btc_price = float(btc_close.iloc[-1]) if not btc_close.empty else 1.0
+
+    # Convert BTC-denominated OI to USD if needed
+    if "oi_btc" in oi_df.columns and "oi_usd" not in oi_df.columns:
+        oi_df = oi_df.copy()
+        oi_df["oi_usd"] = oi_df["oi_btc"] * btc_price
 
     oi      = oi_df["oi_usd"].dropna()
     current = float(oi.iloc[-1])
     prev    = float(oi.iloc[-4]) if len(oi) >= 4 else float(oi.iloc[0])
     oi_rising = current > prev
 
-    btc_close = prices.get("btc", pd.DataFrame()).get("Close", pd.Series()).dropna()
-    price_chg = pct_change_weekly(btc_close)
+    price_chg    = pct_change_weekly(btc_close)
     price_rising = (price_chg or 0) >= 0
 
     if oi_rising and price_rising:
@@ -676,11 +685,11 @@ def calc_oi_signal(oi_df: pd.DataFrame, prices: dict) -> dict:
     oi_chg_pct = round((current / prev - 1) * 100, 2) if prev > 0 else None
 
     return {
-        "current_b":   round(current / 1e9, 2),   # in billions USD
-        "oi_chg_pct":  oi_chg_pct,
-        "oi_rising":   oi_rising,
-        "regime":      regime,
-        "series":      oi_df,
+        "current_b":  round(current / 1e9, 2),   # billions USD
+        "oi_chg_pct": oi_chg_pct,
+        "oi_rising":  oi_rising,
+        "regime":     regime,
+        "series":     oi_df,
     }
 
 
