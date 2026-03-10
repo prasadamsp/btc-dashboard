@@ -78,7 +78,7 @@ import config
 # Data fetching with caching
 # ---------------------------------------------------------------------------
 
-@st.cache_data(ttl=3600, show_spinner="Fetching market data...")
+@st.cache_data(show_spinner="Fetching market data...")
 def load_data(fred_key: str = ""):
     return data_fetcher.fetch_all_data(fred_key=fred_key)
 
